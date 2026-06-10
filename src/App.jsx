@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getCurrentUser, roleHome } from './utils/auth';
 import { initialData } from './data/mockData';
+import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -91,37 +92,39 @@ export default function App() {
 
   const { user, loading, profileError } = authState;
   return (
-    <DataProvider>
-      <Routes>
-        <Route path="/login" element={loading ? <AuthStatus><p className="font-bold text-slate-900">Chargement de la session...</p></AuthStatus> : user ? <Navigate to={roleHome(user.role)} replace /> : <Login />} />
-        <Route path="/admin" element={<RequireRole role="admin" user={user} loading={loading} profileError={profileError} />}>
-          <Route index element={<Navigate to="/admin/dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="intervenants" element={<AdminIntervenants />} />
-          <Route path="beneficiaires" element={<AdminBeneficiaires />} />
-          <Route path="groupes" element={<AdminGroups />} />
-          <Route path="quizzes" element={<AdminQuizzes />} />
-          <Route path="resources" element={<AdminResources />} />
-        </Route>
-        <Route path="/intervenant" element={<RequireRole role="intervenant" user={user} loading={loading} profileError={profileError} />}>
-          <Route index element={<Navigate to="/intervenant/dashboard" replace />} />
-          <Route path="dashboard" element={<IntervenantDashboard user={user} />} />
-          <Route path="groupes" element={<IntervenantGroups user={user} />} />
-          <Route path="creer-quiz" element={<CreateQuiz user={user} />} />
-          <Route path="quizzes" element={<IntervenantQuizzes user={user} />} />
-          <Route path="resultats" element={<IntervenantResults user={user} />} />
-          <Route path="resources" element={<IntervenantResources user={user} />} />
-        </Route>
-        <Route path="/beneficiaire" element={<RequireRole role="beneficiaire" user={user} loading={loading} profileError={profileError} />}>
-          <Route index element={<Navigate to="/beneficiaire/dashboard" replace />} />
-          <Route path="dashboard" element={<BeneficiaireDashboard user={user} />} />
-          <Route path="groupes" element={<BeneficiaireGroups user={user} />} />
-          <Route path="quizzes" element={<BeneficiaireQuizzes user={user} />} />
-          <Route path="quizzes/:quizId" element={<QuizPlayer user={user} />} />
-          <Route path="resources" element={<BeneficiaireResources user={user} />} />
-        </Route>
-        <Route path="*" element={<Navigate to={user ? roleHome(user.role) : '/login'} replace />} />
-      </Routes>
-    </DataProvider>
+    <ErrorBoundary>
+      <DataProvider>
+        <Routes>
+          <Route path="/login" element={loading ? <AuthStatus><p className="font-bold text-slate-900">Chargement de la session...</p></AuthStatus> : user ? <Navigate to={roleHome(user.role)} replace /> : <Login />} />
+          <Route path="/admin" element={<RequireRole role="admin" user={user} loading={loading} profileError={profileError} />}>
+            <Route index element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="intervenants" element={<AdminIntervenants />} />
+            <Route path="beneficiaires" element={<AdminBeneficiaires />} />
+            <Route path="groupes" element={<AdminGroups />} />
+            <Route path="quizzes" element={<AdminQuizzes />} />
+            <Route path="resources" element={<AdminResources />} />
+          </Route>
+          <Route path="/intervenant" element={<RequireRole role="intervenant" user={user} loading={loading} profileError={profileError} />}>
+            <Route index element={<Navigate to="/intervenant/dashboard" replace />} />
+            <Route path="dashboard" element={<IntervenantDashboard user={user} />} />
+            <Route path="groupes" element={<IntervenantGroups user={user} />} />
+            <Route path="creer-quiz" element={<CreateQuiz user={user} />} />
+            <Route path="quizzes" element={<IntervenantQuizzes user={user} />} />
+            <Route path="resultats" element={<IntervenantResults user={user} />} />
+            <Route path="resources" element={<IntervenantResources user={user} />} />
+          </Route>
+          <Route path="/beneficiaire" element={<RequireRole role="beneficiaire" user={user} loading={loading} profileError={profileError} />}>
+            <Route index element={<Navigate to="/beneficiaire/dashboard" replace />} />
+            <Route path="dashboard" element={<BeneficiaireDashboard user={user} />} />
+            <Route path="groupes" element={<BeneficiaireGroups user={user} />} />
+            <Route path="quizzes" element={<BeneficiaireQuizzes user={user} />} />
+            <Route path="quizzes/:quizId" element={<QuizPlayer user={user} />} />
+            <Route path="resources" element={<BeneficiaireResources user={user} />} />
+          </Route>
+          <Route path="*" element={<Navigate to={user ? roleHome(user.role) : '/login'} replace />} />
+        </Routes>
+      </DataProvider>
+    </ErrorBoundary>
   );
 }
