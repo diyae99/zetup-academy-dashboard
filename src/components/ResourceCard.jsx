@@ -12,6 +12,7 @@ const icons = {
 export default function ResourceCard({ resource, groupName, intervenantName, onOpen, onPreview, onDelete, opening = false, canDelete = false }) {
   const Icon = icons[resource.type] || FileText;
   const openLabel = resource.type === 'Video link' ? 'Ouvrir' : 'Ouvrir';
+  const createdDate = resource.createdAt ? new Date(resource.createdAt).toLocaleDateString('fr-FR') : '';
   return (
     <article className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
       <div className="flex items-start gap-4">
@@ -28,6 +29,7 @@ export default function ResourceCard({ resource, groupName, intervenantName, onO
             <span>{resource.language} · {resource.level}</span>
             <span>{groupName}</span>
             {intervenantName && <span>{intervenantName}</span>}
+            {createdDate && <span>{createdDate}</span>}
           </div>
           <div className="mt-5 flex gap-2">
             <button onClick={onOpen} disabled={opening} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">

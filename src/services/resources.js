@@ -90,6 +90,55 @@ export async function loadIntervenantResourceWorkspace(user) {
   };
 }
 
+export async function loadAdminResourcesWorkspace() {
+  const [resourcesResult, groupsResult, profilesResult, languagesResult, levelsResult] = await Promise.all([
+    supabase
+      .from('resources')
+      .select('id,title,description,resource_type,resource_url,storage_path,language_id,level_id,group_id,created_by,status,created_at')
+      .order('created_at', { ascending: false }),
+    supabase.from('groups').select('id,name,language_id,level_id,intervenant_id'),
+    supabase.from('profiles').select('id,full_name,email,role').eq('role', 'intervenant'),
+    supabase.from('languages').select('id,name'),
+    supabase.from('levels').select('id,name'),
+  ]);
+
+  if (resourcesResult.error) throw new Error(`Impossible de charger les ressources: ${resourcesResult.error.message}`);
+  if (groupsResult.error) throw new Error(`Impossible de charger les groupes: ${groupsResult.error.message}`);
+  if (profilesResult.error) throw new Error(`Impossible de charger les intervenants: ${profilesResult.error.message}`);
+  if (languagesResult.error) throw new Error(`Impossible de charger les langues: ${languagesResult.error.message}`);
+  if (levelsResult.error) throw new Error(`Impossible de charger les niveaux: ${levelsResult.error.message}`);
+
+  const languageMap = new Map((languagesResult.data || []).map((item) => [item.id, item.name]));
+  const levelMap = new Map((levelsResult.data || []).map((item) => [item.id, item.name]));
+  const groups = (groupsResult.data || []).map((group) => ({
+    id: group.id,
+    name: group.name,
+    languageId: group.language_id,
+    levelId: group.level_id,
+    language: languageMap.get(group.language_id) || '',
+    level: levelMap.get(group.level_id) || '',
+    intervenantId: group.intervenant_id,
+  }));
+  const intervenants = (profilesResult.data || []).map((profile) => ({
+    id: profile.id,
+    name: profile.full_name || profile.email,
+    email: profile.email,
+  }));
+
+  return {
+    groups,
+    intervenants,
+    resources: (resourcesResult.data || []).map((resource) => {
+      const normalized = normalizeResource(resource, groups);
+      const intervenant = intervenants.find((item) => item.id === normalized.intervenantId);
+      return {
+        ...normalized,
+        intervenantName: intervenant?.name || 'Intervenant non défini',
+      };
+    }),
+  };
+}
+
 export async function createResource({ user, groups, values }) {
   const profileId = currentProfileId(user);
   if (!profileId) throw new Error('Profil utilisateur introuvable. Veuillez vous reconnecter.');
