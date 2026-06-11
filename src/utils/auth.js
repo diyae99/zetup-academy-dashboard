@@ -16,6 +16,7 @@ export function roleHome(role) {
 function normalizeProfile(profile, authUser) {
   return {
     id: authUser.id,
+    profileId: profile.id,
     authUserId: authUser.id,
     name: profile.full_name,
     fullName: profile.full_name,
@@ -28,7 +29,7 @@ function normalizeProfile(profile, authUser) {
 export async function fetchProfile(authUser) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('full_name,email,role,account_status,auth_user_id')
+    .select('id,full_name,email,role,account_status,auth_user_id')
     .eq('auth_user_id', authUser.id)
     .maybeSingle();
 

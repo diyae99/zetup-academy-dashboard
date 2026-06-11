@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { useAppData } from '../../App';
+import { fetchAssignedGroupsForIntervenant } from '../../services/groupAssignments';
 
 const blankQuestion = () => ({ id: `q-${Date.now()}-${Math.random()}`, type: 'QCM', text: '', options: ['', '', '', ''], correctAnswer: '' });
 
@@ -50,12 +51,41 @@ function normalizeQuestions(questions) {
 export default function CreateQuiz({ user }) {
   const { data, setData } = useAppData();
   const navigate = useNavigate();
-  const myGroups = data.groups.filter((g) => g.intervenantId === user.id);
-  const [quiz, setQuiz] = useState({ title: '', groupId: myGroups[0]?.id || '', questions: [blankQuestion()] });
+  const [myGroups, setMyGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  const [groupsError, setGroupsError] = useState('');
+  const [quiz, setQuiz] = useState({ title: '', groupId: '', questions: [blankQuestion()] });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [publishing, setPublishing] = useState(false);
-  const selectedGroup = data.groups.find((g) => g.id === quiz.groupId) || myGroups[0];
+  const selectedGroup = myGroups.find((g) => g.id === quiz.groupId) || myGroups[0];
+
+  useEffect(() => {
+    let active = true;
+    setLoadingGroups(true);
+    setGroupsError('');
+
+    fetchAssignedGroupsForIntervenant(user)
+      .then(({ groups }) => {
+        if (!active) return;
+        setMyGroups(groups);
+        setQuiz((current) => ({
+          ...current,
+          groupId: current.groupId && groups.some((group) => group.id === current.groupId) ? current.groupId : groups[0]?.id || '',
+        }));
+      })
+      .catch((loadError) => {
+        if (import.meta.env.DEV) console.error('Erreur chargement groupes intervenant', loadError);
+        if (active) setGroupsError(loadError.message || 'Impossible de charger vos groupes assignés.');
+      })
+      .finally(() => {
+        if (active) setLoadingGroups(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   function save(status) {
     setError('');
@@ -76,7 +106,7 @@ export default function CreateQuiz({ user }) {
         language: selectedGroup.language,
         level: selectedGroup.level,
         groupId: selectedGroup.id,
-        createdBy: user.id,
+        createdBy: user.authUserId || user.id,
         createdAt: new Date().toISOString().slice(0, 10),
         status,
         questions: cleanQuestions,
@@ -97,7 +127,9 @@ export default function CreateQuiz({ user }) {
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
       {success && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{success}</div>}
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
-        <div className="grid gap-4 md:grid-cols-2"><input value={quiz.title} onChange={(e) => setQuiz({ ...quiz, title: e.target.value })} placeholder="Titre du quiz" className="rounded-xl border border-slate-200 px-4 py-3" /><select value={quiz.groupId} onChange={(e) => setQuiz({ ...quiz, groupId: e.target.value })} className="rounded-xl border border-slate-200 px-4 py-3" disabled={!myGroups.length}>{myGroups.length ? myGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>) : <option value="">Aucun groupe assigné</option>}</select></div>
+        <div className="grid gap-4 md:grid-cols-2"><input value={quiz.title} onChange={(e) => setQuiz({ ...quiz, title: e.target.value })} placeholder="Titre du quiz" className="rounded-xl border border-slate-200 px-4 py-3" /><select value={quiz.groupId} onChange={(e) => setQuiz({ ...quiz, groupId: e.target.value })} className="rounded-xl border border-slate-200 px-4 py-3" disabled={loadingGroups || !!groupsError || !myGroups.length}>{loadingGroups ? <option value="">Chargement des groupes...</option> : myGroups.length ? myGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>) : <option value="">Aucun groupe assigné</option>}</select></div>
+        {groupsError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{groupsError}</p>}
+        {!loadingGroups && !groupsError && !myGroups.length && <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Aucun groupe ne vous est encore assigné. Contactez l’administrateur.</p>}
       </div>
       {quiz.questions.map((question, index) => <QuestionEditor key={question.id} index={index} question={question} setQuestion={(next) => setQuiz((q) => ({ ...q, questions: q.questions.map((item) => item.id === question.id ? next : item) }))} remove={() => setQuiz((q) => ({ ...q, questions: q.questions.filter((item) => item.id !== question.id) }))} />)}
       <div className="flex flex-wrap gap-3"><button disabled={publishing} onClick={() => setQuiz((q) => ({ ...q, questions: [...q.questions, blankQuestion()] }))} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold disabled:cursor-not-allowed disabled:opacity-60"><Plus size={18} /> Ajouter une question</button><button disabled={publishing} onClick={() => save('brouillon')} className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">Enregistrer brouillon</button><button disabled={publishing} onClick={() => save('publié')} className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{publishing ? 'Publication en cours...' : 'Publier quiz'}</button></div>
