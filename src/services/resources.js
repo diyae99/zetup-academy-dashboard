@@ -105,7 +105,7 @@ export async function createResource({ user, groups, values }) {
 
   if (values.type !== 'Video link') {
     const filename = safeFilename(values.file.name);
-    storagePath = `resources/${profileId}/${selectedGroup.id}/${Date.now()}-${filename}`;
+    storagePath = `${profileId}/${selectedGroup.id}/${Date.now()}-${filename}`;
 
     const { error: uploadError } = await supabase.storage
       .from('resources')
@@ -115,7 +115,12 @@ export async function createResource({ user, groups, values }) {
         upsert: false,
       });
 
-    if (uploadError) throw new Error(`Échec du téléversement: ${uploadError.message}`);
+    if (uploadError) {
+      const authorizationMessage = uploadError.message?.toLowerCase().includes('row-level security')
+        ? 'Vous n’avez pas l’autorisation d’ajouter une ressource à ce groupe.'
+        : 'Erreur de téléversement Supabase Storage.';
+      throw new Error(`${authorizationMessage} ${uploadError.message}`);
+    }
     resourceUrl = null;
   }
 
@@ -140,7 +145,10 @@ export async function createResource({ user, groups, values }) {
 
   if (error) {
     if (storagePath) await supabase.storage.from('resources').remove([storagePath]);
-    throw new Error(`Ressource téléversée mais non enregistrée: ${error.message}`);
+    const authorizationMessage = error.message?.toLowerCase().includes('row-level security')
+      ? 'Vous n’avez pas l’autorisation d’ajouter une ressource à ce groupe.'
+      : 'Ressource téléversée mais non enregistrée.';
+    throw new Error(`${authorizationMessage} ${error.message}`);
   }
 
   return normalizeResource(data, groups);
