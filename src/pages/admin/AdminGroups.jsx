@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useAppData } from '../../App';
-import { createAssignedGroup, fetchAdminGroupFormData } from '../../services/groupAssignments';
+import { createAssignedGroup, fetchAdminGroupFormData, toGroupDisplayStatus } from '../../services/groupAssignments';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
 
@@ -41,7 +41,7 @@ export default function AdminGroups() {
         languageId: f.get('languageId'),
         levelId: f.get('levelId'),
         intervenantId: f.get('intervenantId'),
-        status: 'actif',
+        status: 'active',
       });
 
       setData((d) => ({
@@ -56,7 +56,7 @@ export default function AdminGroups() {
             intervenantId: created.intervenant_id,
             beneficiaryIds: f.getAll('beneficiaries'),
             averageScore: 0,
-            status: created.status || 'actif',
+            status: toGroupDisplayStatus(created.status),
           },
         ],
       }));

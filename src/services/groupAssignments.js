@@ -4,13 +4,22 @@ function mapAccountStatus(status) {
   return status === 'suspended' || status === 'suspendu' ? 'suspended' : 'active';
 }
 
-async function resolveIntervenant(user) {
+export function toGroupDbStatus(status) {
+  return status === 'archived' || status === 'archivé' ? 'archived' : 'active';
+}
+
+export function toGroupDisplayStatus(status) {
+  return status === 'archived' || status === 'archivé' ? 'archivé' : 'actif';
+}
+
+async function resolveIntervenantProfile(user) {
   const authUserId = user?.authUserId || user?.id;
   if (!authUserId && !user?.email) throw new Error('Session intervenant introuvable.');
 
   let query = supabase
-    .from('intervenants')
-    .select('id,auth_user_id,full_name,name,email,account_status,status')
+    .from('profiles')
+    .select('id,auth_user_id,full_name,email,account_status,role')
+    .eq('role', 'intervenant')
     .limit(1);
 
   if (authUserId) {
@@ -25,8 +34,9 @@ async function resolveIntervenant(user) {
 
   if (user?.email && authUserId) {
     const fallback = await supabase
-      .from('intervenants')
-      .select('id,auth_user_id,full_name,name,email,account_status,status')
+      .from('profiles')
+      .select('id,auth_user_id,full_name,email,account_status,role')
+      .eq('role', 'intervenant')
       .ilike('email', user.email)
       .maybeSingle();
     if (fallback.error) throw new Error(`Impossible de charger le profil intervenant: ${fallback.error.message}`);
@@ -46,7 +56,7 @@ async function loadLookup(table, ids) {
 }
 
 export async function fetchAssignedGroupsForIntervenant(user) {
-  const intervenant = await resolveIntervenant(user);
+  const intervenant = await resolveIntervenantProfile(user);
 
   const { data, error } = await supabase
     .from('groups')
@@ -74,7 +84,7 @@ export async function fetchAssignedGroupsForIntervenant(user) {
       intervenantId: group.intervenant_id,
       beneficiaryIds: [],
       averageScore: 0,
-      status: group.status || 'actif',
+      status: toGroupDisplayStatus(group.status),
       description: group.description || '',
       createdAt: group.created_at,
     })),
@@ -84,8 +94,9 @@ export async function fetchAssignedGroupsForIntervenant(user) {
 export async function fetchAdminGroupFormData() {
   const [intervenantsResult, languagesResult, levelsResult] = await Promise.all([
     supabase
-      .from('intervenants')
-      .select('id,auth_user_id,full_name,name,email,account_status,status')
+      .from('profiles')
+      .select('id,auth_user_id,full_name,email,account_status,role')
+      .eq('role', 'intervenant')
       .order('created_at', { ascending: false }),
     supabase.from('languages').select('id,name').order('name'),
     supabase.from('levels').select('id,name,sort_order').order('sort_order'),
@@ -99,17 +110,17 @@ export async function fetchAdminGroupFormData() {
     intervenants: (intervenantsResult.data || []).map((item) => ({
       id: item.id,
       authUserId: item.auth_user_id,
-      name: item.full_name || item.name || item.email,
+      name: item.full_name || item.email,
       email: item.email,
       accountStatus: item.account_status,
-      status: item.status,
+      status: item.account_status === 'suspended' ? 'suspendu' : 'actif',
     })),
     languages: languagesResult.data || [],
     levels: levelsResult.data || [],
   };
 }
 
-export async function createAssignedGroup({ name, languageId, levelId, intervenantId, status = 'actif' }) {
+export async function createAssignedGroup({ name, languageId, levelId, intervenantId, status = 'active' }) {
   if (!name?.trim()) throw new Error('Le nom du groupe est obligatoire.');
   if (!languageId) throw new Error('La langue du groupe est obligatoire.');
   if (!levelId) throw new Error('Le niveau du groupe est obligatoire.');
@@ -122,11 +133,14 @@ export async function createAssignedGroup({ name, languageId, levelId, intervena
       language_id: languageId,
       level_id: levelId,
       intervenant_id: intervenantId,
-      status,
+      status: toGroupDbStatus(status),
     })
     .select('id,name,language_id,level_id,intervenant_id,status,created_at')
     .single();
 
+  if (error?.message?.includes('groups_status_check')) {
+    throw new Error('Impossible de créer le groupe: le statut doit être actif ou archivé.');
+  }
   if (error) throw new Error(`Impossible de créer le groupe: ${error.message}`);
   return data;
 }
