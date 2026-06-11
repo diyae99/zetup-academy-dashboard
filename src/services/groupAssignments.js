@@ -92,32 +92,60 @@ export async function fetchAssignedGroupsForIntervenant(user) {
 }
 
 export async function fetchAdminGroupFormData() {
-  const [intervenantsResult, languagesResult, levelsResult] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('id,auth_user_id,full_name,email,account_status,role')
-      .eq('role', 'intervenant')
-      .order('created_at', { ascending: false }),
-    supabase.from('languages').select('id,name').order('name'),
-    supabase.from('levels').select('id,name,sort_order').order('sort_order'),
-  ]);
+  try {
+    const [intervenantsResult, languagesResult, levelsResult] = await Promise.allSettled([
+      supabase
+        .from('profiles')
+        .select('id,auth_user_id,full_name,email,account_status,role')
+        .eq('role', 'intervenant')
+        .order('created_at', { ascending: false }),
+      supabase.from('languages').select('id,name').order('name'),
+      supabase.from('levels').select('id,name,sort_order').order('sort_order'),
+    ]);
 
-  if (intervenantsResult.error) throw new Error(`Impossible de charger les intervenants: ${intervenantsResult.error.message}`);
-  if (languagesResult.error) throw new Error(`Impossible de charger les langues: ${languagesResult.error.message}`);
-  if (levelsResult.error) throw new Error(`Impossible de charger les niveaux: ${levelsResult.error.message}`);
+    const failures = [];
+    const unwrap = (result, label) => {
+      if (result.status === 'rejected') {
+        failures.push(`${label}: ${result.reason?.message || 'requête interrompue'}`);
+        return [];
+      }
+      if (result.value.error) {
+        failures.push(`${label}: ${result.value.error.message}`);
+        return [];
+      }
+      return result.value.data || [];
+    };
 
-  return {
-    intervenants: (intervenantsResult.data || []).map((item) => ({
-      id: item.id,
-      authUserId: item.auth_user_id,
-      name: item.full_name || item.email,
-      email: item.email,
-      accountStatus: item.account_status,
-      status: item.account_status === 'suspended' ? 'suspendu' : 'actif',
-    })),
-    languages: languagesResult.data || [],
-    levels: levelsResult.data || [],
-  };
+    const intervenants = unwrap(intervenantsResult, 'Intervenants');
+    const languages = unwrap(languagesResult, 'Langues');
+    const loadedLevels = unwrap(levelsResult, 'Niveaux');
+
+    if (failures.length) {
+      throw new Error(`Impossible de charger les données du formulaire. ${failures.join(' ')}`);
+    }
+    if (!intervenants.length) {
+      throw new Error('Aucun intervenant accessible. Vérifiez que les profils intervenants existent et que les droits RLS admin sont actifs.');
+    }
+    if (!languages.length || !loadedLevels.length) {
+      throw new Error('Les listes de langues ou de niveaux sont vides. Vérifiez les données de référence Supabase.');
+    }
+
+    return {
+      intervenants: intervenants.map((item) => ({
+        id: item.id,
+        authUserId: item.auth_user_id,
+        name: item.full_name || item.email,
+        email: item.email,
+        accountStatus: item.account_status,
+        status: item.account_status === 'suspended' ? 'suspendu' : 'actif',
+      })),
+      languages,
+      levels: loadedLevels,
+    };
+  } catch (error) {
+    if (import.meta.env.DEV) console.error('Erreur chargement formulaire groupe admin', error);
+    throw error;
+  }
 }
 
 export async function createAssignedGroup({ name, languageId, levelId, intervenantId, status = 'active' }) {

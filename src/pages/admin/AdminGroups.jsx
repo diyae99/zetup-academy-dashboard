@@ -10,17 +10,24 @@ export default function AdminGroups() {
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({ intervenants: [], languages: [], levels: [] });
   const [error, setError] = useState('');
+  const [formLoadError, setFormLoadError] = useState('');
+  const [loadingFormData, setLoadingFormData] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setLoadingFormData(true);
+    setFormLoadError('');
     fetchAdminGroupFormData()
       .then((loaded) => {
         if (active) setFormData(loaded);
       })
       .catch((loadError) => {
         if (import.meta.env.DEV) console.error('Erreur chargement données groupes admin', loadError);
-        if (active) setError(loadError.message || 'Impossible de charger les données de création du groupe.');
+        if (active) setFormLoadError(loadError.message || 'Impossible de charger les données de création du groupe.');
+      })
+      .finally(() => {
+        if (active) setLoadingFormData(false);
       });
     return () => {
       active = false;
@@ -85,7 +92,7 @@ export default function AdminGroups() {
           </article>;
         })}
       </div>
-      {open && <Modal title="Ajouter un groupe" onClose={() => setOpen(false)}><GroupForm onSubmit={add} data={data} formData={formData} saving={saving} error={error} /></Modal>}
+      {open && <Modal title="Ajouter un groupe" onClose={() => setOpen(false)}><GroupForm onSubmit={add} data={data} formData={formData} saving={saving} loading={loadingFormData} loadError={formLoadError} error={error} /></Modal>}
     </div>
   );
 }
@@ -94,18 +101,19 @@ function Info({ label, value }) {
   return <div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">{label}</p><p className="mt-1 font-black text-slate-900">{value}</p></div>;
 }
 
-function GroupForm({ onSubmit, data, formData, saving, error }) {
+function GroupForm({ onSubmit, data, formData, saving, loading, loadError, error }) {
   const languageOptions = formData.languages;
   const levelOptions = formData.levels;
   const intervenantOptions = formData.intervenants;
-  const formReady = languageOptions.length && levelOptions.length && intervenantOptions.length;
+  const formReady = !loading && !loadError && languageOptions.length && levelOptions.length && intervenantOptions.length;
 
   return <form onSubmit={onSubmit} className="grid gap-4">
     <input name="name" required placeholder="Nom du groupe" className="rounded-xl border border-slate-200 px-4 py-3" />
-    <div className="grid gap-4 sm:grid-cols-2"><select name="languageId" className="rounded-xl border border-slate-200 px-4 py-3">{languageOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select><select name="levelId" className="rounded-xl border border-slate-200 px-4 py-3">{levelOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
-    <select name="intervenantId" required className="rounded-xl border border-slate-200 px-4 py-3">{intervenantOptions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+    <div className="grid gap-4 sm:grid-cols-2"><select name="languageId" disabled={loading || !!loadError || !languageOptions.length} className="rounded-xl border border-slate-200 px-4 py-3 disabled:bg-slate-50">{languageOptions.length ? languageOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>) : <option value="">Aucune langue disponible</option>}</select><select name="levelId" disabled={loading || !!loadError || !levelOptions.length} className="rounded-xl border border-slate-200 px-4 py-3 disabled:bg-slate-50">{levelOptions.length ? levelOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>) : <option value="">Aucun niveau disponible</option>}</select></div>
+    <select name="intervenantId" required disabled={loading || !!loadError || !intervenantOptions.length} className="rounded-xl border border-slate-200 px-4 py-3 disabled:bg-slate-50">{intervenantOptions.length ? intervenantOptions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>) : <option value="">Aucun intervenant accessible</option>}</select>
     <fieldset className="rounded-xl border border-slate-200 p-4"><legend className="px-1 text-sm font-bold">Bénéficiaires</legend>{data.beneficiaries.map((b) => <label key={b.id} className="mb-2 block text-sm"><input type="checkbox" name="beneficiaries" value={b.id} /> {b.name}</label>)}</fieldset>
-    {!formReady && !error && <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Chargement des données Supabase...</p>}
+    {loading && <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Chargement des données Supabase...</p>}
+    {loadError && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{loadError}</p>}
     {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
     <button disabled={saving || !formReady} className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{saving ? 'Création du groupe...' : 'Créer le groupe'}</button>
   </form>;
