@@ -22,6 +22,7 @@ export default function IntervenantResources({ user }) {
   const [openingId, setOpeningId] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   const fileMode = form.type !== 'Video link';
   const selectedGroup = useMemo(() => groups.find((group) => group.id === form.groupId), [form.groupId, groups]);
@@ -61,8 +62,8 @@ export default function IntervenantResources({ user }) {
       const created = await createResource({ user, groups, values: form });
       setResources((current) => [created, ...current]);
       setForm({ ...initialForm, groupId: groups[0]?.id || '' });
-      event.currentTarget.reset();
-      setSuccess('Ressource enregistrée avec succès.');
+      setFileInputKey((key) => key + 1);
+      setSuccess('Ressource ajoutée avec succès.');
       setShowForm(false);
     } catch (saveError) {
       if (import.meta.env.DEV) console.error('Erreur création ressource', saveError);
@@ -111,14 +112,14 @@ export default function IntervenantResources({ user }) {
       {showForm && (
         <form onSubmit={submit} className="grid gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70 md:grid-cols-2">
           <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required placeholder="Titre" className="rounded-xl border border-slate-200 px-4 py-3" />
-          <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value, file: null, url: '' })} className="rounded-xl border border-slate-200 px-4 py-3">
+          <select value={form.type} onChange={(event) => { setForm({ ...form, type: event.target.value, file: null, url: '' }); setFileInputKey((key) => key + 1); }} className="rounded-xl border border-slate-200 px-4 py-3">
             {RESOURCE_TYPES.map((type) => <option key={type}>{type}</option>)}
           </select>
           <select value={form.groupId} onChange={(event) => setForm({ ...form, groupId: event.target.value })} required disabled={loading || !groups.length} className="rounded-xl border border-slate-200 px-4 py-3 disabled:bg-slate-50">
             {groups.length ? groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>) : <option value="">Aucun groupe assigné</option>}
           </select>
           {fileMode ? (
-            <input key={form.type} type="file" onChange={(event) => setForm({ ...form, file: event.target.files?.[0] || null })} className="rounded-xl border border-slate-200 px-4 py-3" />
+            <input key={`${form.type}-${fileInputKey}`} type="file" onChange={(event) => setForm({ ...form, file: event.target.files?.[0] || null })} className="rounded-xl border border-slate-200 px-4 py-3" />
           ) : (
             <input value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} type="url" required placeholder="Lien vidéo" className="rounded-xl border border-slate-200 px-4 py-3" />
           )}
