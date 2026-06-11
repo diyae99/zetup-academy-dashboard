@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import ResourceCard from '../../components/ResourceCard';
-import { createResource, deleteResource, loadIntervenantResourceWorkspace, openResource, RESOURCE_TYPES } from '../../services/resources';
+import ResourcePreviewModal from '../../components/ResourcePreviewModal';
+import { createResource, deleteResource, loadIntervenantResourceWorkspace, openResource, resolveResourceUrl, RESOURCE_TYPES } from '../../services/resources';
 
 const initialForm = {
   title: '',
@@ -23,6 +24,7 @@ export default function IntervenantResources({ user }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [preview, setPreview] = useState(null);
 
   const fileMode = form.type !== 'Video link';
   const selectedGroup = useMemo(() => groups.find((group) => group.id === form.groupId), [form.groupId, groups]);
@@ -85,6 +87,19 @@ export default function IntervenantResources({ user }) {
     }
   }
 
+  async function handlePreview(resource) {
+    setError('');
+    try {
+      setOpeningId(resource.id);
+      const url = await resolveResourceUrl(resource);
+      setPreview({ resource, url });
+    } catch (previewError) {
+      setError(previewError.message || 'Fichier indisponible ou lien invalide');
+    } finally {
+      setOpeningId('');
+    }
+  }
+
   async function handleDelete(resource) {
     setError('');
     setSuccess('');
@@ -141,13 +156,14 @@ export default function IntervenantResources({ user }) {
             resource={resource}
             groupName={resource.groupName}
             onOpen={() => handleOpen(resource)}
-            onPreview={() => handleOpen(resource)}
+            onPreview={() => handlePreview(resource)}
             onDelete={() => handleDelete(resource)}
             opening={openingId === resource.id}
             canDelete
           />
         ))}
       </div>
+      {preview && <ResourcePreviewModal resource={preview.resource} url={preview.url} onClose={() => setPreview(null)} />}
     </div>
   );
 }

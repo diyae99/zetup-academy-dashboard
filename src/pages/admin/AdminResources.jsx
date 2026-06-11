@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import ResourceCard from '../../components/ResourceCard';
-import { loadAdminResourcesWorkspace, openResource, RESOURCE_TYPES } from '../../services/resources';
+import ResourcePreviewModal from '../../components/ResourcePreviewModal';
+import { loadAdminResourcesWorkspace, openResource, resolveResourceUrl, RESOURCE_TYPES } from '../../services/resources';
 
 export default function AdminResources() {
   const [workspace, setWorkspace] = useState({ resources: [], groups: [], intervenants: [] });
@@ -8,6 +9,7 @@ export default function AdminResources() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openingId, setOpeningId] = useState('');
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -55,6 +57,19 @@ export default function AdminResources() {
     }
   }
 
+  async function handlePreview(resource) {
+    setError('');
+    try {
+      setOpeningId(resource.id);
+      const url = await resolveResourceUrl(resource);
+      setPreview({ resource, url });
+    } catch (previewError) {
+      setError(previewError.message || 'Fichier indisponible ou lien invalide');
+    } finally {
+      setOpeningId('');
+    }
+  }
+
   return (
     <div className="space-y-5">
       {loading && <div className="rounded-2xl bg-white p-5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200/70">Chargement des ressources...</div>}
@@ -68,8 +83,9 @@ export default function AdminResources() {
       </div>
       {!loading && !rows.length && <div className="rounded-2xl bg-white p-5 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200/70">Aucune ressource ne correspond aux filtres sélectionnés.</div>}
       <div className="grid gap-4 xl:grid-cols-2">
-        {rows.map((resource) => <ResourceCard key={resource.id} resource={resource} groupName={resource.groupName} intervenantName={resource.intervenantName} onOpen={() => handleOpen(resource)} onPreview={() => handleOpen(resource)} opening={openingId === resource.id} />)}
+        {rows.map((resource) => <ResourceCard key={resource.id} resource={resource} groupName={resource.groupName} intervenantName={resource.intervenantName} onOpen={() => handleOpen(resource)} onPreview={() => handlePreview(resource)} opening={openingId === resource.id} />)}
       </div>
+      {preview && <ResourcePreviewModal resource={preview.resource} url={preview.url} onClose={() => setPreview(null)} />}
     </div>
   );
 }

@@ -204,15 +204,20 @@ export async function createResource({ user, groups, values }) {
 }
 
 export async function openResource(resource) {
-  if (resource.type === 'Video link') {
-    window.open(resource.url, '_blank', 'noopener,noreferrer');
-    return;
-  }
+  const url = await resolveResourceUrl(resource);
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
 
-  if (!resource.storagePath) throw new Error('Fichier introuvable pour cette ressource.');
-  const { data, error } = await supabase.storage.from('resources').createSignedUrl(resource.storagePath, 60 * 10);
-  if (error) throw new Error(`Impossible d’ouvrir le fichier: ${error.message}`);
-  window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+export async function resolveResourceUrl(resource) {
+  const directUrl = resource.url || resource.fileUrl || resource.publicUrl;
+  if (directUrl?.startsWith('http')) return directUrl;
+
+  const storagePath = resource.storagePath || resource.filePath || directUrl;
+  if (!storagePath) throw new Error('Fichier indisponible ou lien invalide');
+
+  const { data, error } = await supabase.storage.from('resources').createSignedUrl(storagePath, 60 * 10);
+  if (error || !data?.signedUrl) throw new Error('Fichier indisponible ou lien invalide');
+  return data.signedUrl;
 }
 
 export async function deleteResource(resource) {
