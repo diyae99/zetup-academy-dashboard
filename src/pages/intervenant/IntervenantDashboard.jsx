@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, ClipboardList, FilePlus2, FileText, Target, UsersRound } from 'lucide-react';
+import { useAppData } from '../../App';
 import { fetchIntervenantDashboard } from '../../services/dashboards';
 import StatCard from '../../components/StatCard';
 import DataTable from '../../components/DataTable';
@@ -13,6 +14,7 @@ const emptyDashboard = {
 };
 
 export default function IntervenantDashboard({ user }) {
+  const { data } = useAppData();
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -22,7 +24,7 @@ export default function IntervenantDashboard({ user }) {
     setLoading(true);
     setError('');
 
-    fetchIntervenantDashboard(user)
+    fetchIntervenantDashboard(user, data)
       .then((data) => {
         if (active) setDashboard(data);
       })
@@ -37,7 +39,7 @@ export default function IntervenantDashboard({ user }) {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, data]);
 
   const { stats, groups, recentResults } = dashboard;
 

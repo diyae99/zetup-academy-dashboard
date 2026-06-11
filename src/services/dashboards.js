@@ -19,7 +19,28 @@ async function unwrap(result, label) {
   return result.data || [];
 }
 
-export async function fetchIntervenantDashboard(user) {
+function localQuizOwnerId(quiz) {
+  return quiz.createdBy || quiz.created_by || quiz.intervenantId || quiz.intervenant_id || null;
+}
+
+function mergeQuizzes(remoteQuizzes, localQuizzes = []) {
+  const normalizedLocal = localQuizzes.map((quiz) => ({
+    id: quiz.id,
+    title: quiz.title,
+    group_id: quiz.groupId || quiz.group_id,
+    created_by: localQuizOwnerId(quiz),
+    status: quiz.status,
+    created_at: quiz.createdAt || quiz.created_at || null,
+    source: 'local',
+  }));
+  const byQuizId = new Map();
+  [...remoteQuizzes, ...normalizedLocal].forEach((quiz) => {
+    if (quiz?.id && !byQuizId.has(quiz.id)) byQuizId.set(quiz.id, quiz);
+  });
+  return [...byQuizId.values()];
+}
+
+export async function fetchIntervenantDashboard(user, localData = {}) {
   const profileId = user?.profileId;
   if (!profileId) throw new Error('Profil utilisateur introuvable. Veuillez vous reconnecter.');
 
@@ -34,12 +55,14 @@ export async function fetchIntervenantDashboard(user) {
 
   const groups = await unwrap(groupsResult, 'Groupes');
   const resources = await unwrap(resourcesResult, 'Ressources');
-  const quizzes = await unwrap(quizzesResult, 'Quizzes');
+  const remoteQuizzes = await unwrap(quizzesResult, 'Quizzes');
   const attempts = await unwrap(attemptsResult, 'Résultats');
   const languageMap = byId(await unwrap(languagesResult, 'Langues'));
   const levelMap = byId(await unwrap(levelsResult, 'Niveaux'));
 
   const groupIds = new Set(groups.map((group) => group.id));
+  const ownerIds = new Set([profileId, user?.id, user?.authUserId].filter(Boolean));
+  const quizzes = mergeQuizzes(remoteQuizzes, localData.quizzes).filter((quiz) => ownerIds.has(quiz.created_by) || groupIds.has(quiz.group_id));
   const visibleAttempts = attempts.filter((attempt) => groupIds.has(attempt.group_id));
   const quizMap = byId(quizzes);
 
@@ -71,9 +94,9 @@ export async function fetchIntervenantDashboard(user) {
   };
 }
 
-export async function fetchAdminDashboard() {
+export async function fetchAdminDashboard(localData = {}) {
   const [profilesResult, groupsResult, resourcesResult, quizzesResult, attemptsResult, languagesResult, levelsResult] = await Promise.all([
-    supabase.from('profiles').select('id,full_name,email,role,created_at'),
+    supabase.from('profiles').select('id,auth_user_id,full_name,email,role,created_at'),
     supabase.from('groups').select('id,name,language_id,level_id,intervenant_id,status,created_at'),
     supabase.from('resources').select('id,title,created_by,group_id,created_at'),
     supabase.from('quizzes').select('id,title,created_by,group_id,status,created_at'),
@@ -85,7 +108,7 @@ export async function fetchAdminDashboard() {
   const profiles = await unwrap(profilesResult, 'Profils');
   const groups = await unwrap(groupsResult, 'Groupes');
   const resources = await unwrap(resourcesResult, 'Ressources');
-  const quizzes = await unwrap(quizzesResult, 'Quizzes');
+  const remoteQuizzes = await unwrap(quizzesResult, 'Quizzes');
   const attempts = await unwrap(attemptsResult, 'Résultats');
   const languageMap = byId(await unwrap(languagesResult, 'Langues'));
   const levelMap = byId(await unwrap(levelsResult, 'Niveaux'));
@@ -93,13 +116,23 @@ export async function fetchAdminDashboard() {
 
   const intervenants = profiles.filter((profile) => profile.role === 'intervenant');
   const beneficiaries = profiles.filter((profile) => profile.role === 'beneficiaire');
+  const quizzes = mergeQuizzes(remoteQuizzes, localData.quizzes);
 
   const byIntervenant = intervenants.map((intervenant) => ({
     name: nameOf(intervenant).split(' ')[0],
     fullName: nameOf(intervenant),
-    quizzes: quizzes.filter((quiz) => quiz.created_by === intervenant.id).length,
+    quizzes: quizzes.filter((quiz) => quiz.created_by === intervenant.id || quiz.created_by === intervenant.auth_user_id).length,
     resources: resources.filter((resource) => resource.created_by === intervenant.id).length,
   }));
+  const assignedQuizIds = new Set();
+  byIntervenant.forEach((row, index) => {
+    const intervenant = intervenants[index];
+    quizzes.forEach((quiz) => {
+      if (quiz.created_by === intervenant.id || quiz.created_by === intervenant.auth_user_id) assignedQuizIds.add(quiz.id);
+    });
+  });
+  const unassignedQuizzes = quizzes.filter((quiz) => !assignedQuizIds.has(quiz.id)).length;
+  if (unassignedQuizzes) byIntervenant.push({ name: 'Sans intervenant', fullName: 'Sans intervenant', quizzes: unassignedQuizzes, resources: 0 });
 
   const byLanguage = Array.from(languageMap.values()).map((language) => ({
     name: language.name,

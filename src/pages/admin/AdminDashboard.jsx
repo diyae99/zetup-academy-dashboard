@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { BookOpen, ClipboardList, FileText, GraduationCap, Target, UsersRound } from 'lucide-react';
+import { useAppData } from '../../App';
 import { fetchAdminDashboard } from '../../services/dashboards';
 import StatCard from '../../components/StatCard';
 import ChartCard from '../../components/ChartCard';
@@ -15,6 +16,7 @@ const emptyDashboard = {
 };
 
 export default function AdminDashboard() {
+  const { data } = useAppData();
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -24,7 +26,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
 
-    fetchAdminDashboard()
+    fetchAdminDashboard(data)
       .then((data) => {
         if (active) setDashboard(data);
       })
@@ -39,7 +41,7 @@ export default function AdminDashboard() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [data]);
 
   const { stats, byIntervenant, byLanguage, topGroups, activities } = dashboard;
   const columns = [
