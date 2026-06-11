@@ -1,4 +1,4 @@
-import { Eye, FileAudio, FileText, Presentation, Video } from 'lucide-react';
+import { Eye, FileAudio, FileText, Presentation, Trash2, Video } from 'lucide-react';
 import Badge from './Badge';
 
 const icons = {
@@ -9,8 +9,9 @@ const icons = {
   Audio: FileAudio,
 };
 
-export default function ResourceCard({ resource, groupName, intervenantName }) {
+export default function ResourceCard({ resource, groupName, intervenantName, onOpen, onPreview, onDelete, opening = false, canDelete = false }) {
   const Icon = icons[resource.type] || FileText;
+  const openLabel = resource.type === 'Video link' ? 'Ouvrir' : 'Ouvrir';
   return (
     <article className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
       <div className="flex items-start gap-4">
@@ -29,12 +30,13 @@ export default function ResourceCard({ resource, groupName, intervenantName }) {
             {intervenantName && <span>{intervenantName}</span>}
           </div>
           <div className="mt-5 flex gap-2">
-            <button className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-              <Eye size={16} /> Voir
+            <button onClick={onOpen} disabled={opening} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+              <Eye size={16} /> {opening ? 'Ouverture...' : openLabel}
             </button>
-            <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <button onClick={onPreview} disabled={opening} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
               <Eye size={16} /> Prévisualiser
             </button>
+            {canDelete && <button onClick={onDelete} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"><Trash2 size={16} /> Supprimer</button>}
           </div>
         </div>
       </div>
