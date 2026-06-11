@@ -45,7 +45,12 @@ export async function fetchProfile(authUser) {
 
 export async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: error.message };
+  if (error) {
+    const message = error.message?.toLowerCase().includes('invalid login credentials')
+      ? 'Email ou mot de passe incorrect.'
+      : error.message;
+    return { error: message };
+  }
 
   try {
     const user = await fetchProfile(data.user);

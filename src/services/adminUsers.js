@@ -60,3 +60,41 @@ export async function createIntervenantAccount(payload) {
     throw new Error(`Impossible de joindre la fonction create-intervenant. Vérifiez que l’Edge Function est déployée et que CORS est configuré. Détail: ${error.message}`);
   }
 }
+
+export async function createBeneficiaireAccount(payload) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+
+  if (sessionError || !accessToken) {
+    throw new Error('Session admin introuvable. Veuillez vous reconnecter.');
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('create-beneficiaire', {
+      body: payload,
+    });
+
+    if (error) {
+      let details = null;
+      if (error.context) {
+        try {
+          details = await error.context.json();
+        } catch {
+          try {
+            details = { error: await error.context.text() };
+          } catch {
+            details = null;
+          }
+        }
+      }
+      throw new Error(details?.error || error.message || 'Impossible de créer le compte bénéficiaire.');
+    }
+
+    return data;
+  } catch (error) {
+    if (error.message?.startsWith('Impossible de créer') || error.message === 'Ce compte existe déjà.') {
+      throw error;
+    }
+    throw new Error(`Impossible de joindre la fonction create-beneficiaire. Vérifiez que l’Edge Function est déployée. Détail: ${error.message}`);
+  }
+}

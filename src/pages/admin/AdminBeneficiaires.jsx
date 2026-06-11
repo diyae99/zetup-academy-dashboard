@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Copy, Eye, KeyRound, Plus, RefreshCcw, Search, ShieldCheck } from 'lucide-react';
 import { useAppData } from '../../App';
+import { createBeneficiaireAccount } from '../../services/adminUsers';
 import Badge from '../../components/Badge';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
@@ -17,6 +18,8 @@ export default function AdminBeneficiaires() {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const rows = useMemo(() => data.beneficiaries.filter((b) => b.name.toLowerCase().includes(search.toLowerCase()) || b.email.includes(search)), [data.beneficiaries, search]);
   const accountFor = (id) => mockAccounts.find((user) => user.id === id);
   const showCredentials = (row, password) => {
@@ -48,38 +51,57 @@ export default function AdminBeneficiaires() {
     { key: 'lastLogin', label: 'Dernière connexion', render: (r) => accountFor(r.id)?.lastLogin || 'Jamais' },
     { key: 'actions', label: 'Actions', render: (r) => <AccountActions account={accountFor(r.id)} onShow={() => showCredentials(r)} onReset={() => resetPassword(r)} onToggle={() => toggleStatus(r)} /> },
   ];
-  function add(event) {
+  async function add(event) {
     event.preventDefault();
+    setError('');
     const form = new FormData(event.currentTarget);
-    const id = `ben-${Date.now()}`;
-    const profileEmail = form.get('email');
-    const loginEmail = form.get('loginEmail');
+    const profileEmail = String(form.get('email') || '').trim().toLowerCase();
+    const loginEmail = String(form.get('loginEmail') || '').trim().toLowerCase();
     const password = form.get('password');
     const groupIds = form.getAll('groups');
-    setData((d) => ({
-      ...d,
-      beneficiaries: [...d.beneficiaries, { id, name: form.get('name'), email: profileEmail, phone: form.get('phone'), groupIds, status: form.get('status') }],
-      groups: d.groups.map((group) => (groupIds.includes(group.id) ? { ...group, beneficiaryIds: [...new Set([...group.beneficiaryIds, id])] } : group)),
-    }));
-    setMockAccounts((accounts) => [...accounts, { id, loginEmail, password, accountStatus: form.get('accountStatus'), lastLogin: 'À configurer via Edge Function' }]);
-    setConfirmation({ title: 'Profil bénéficiaire enregistré', email: loginEmail, password });
-    setOpen(false);
+
+    try {
+      setSaving(true);
+      const result = await createBeneficiaireAccount({
+        fullName: form.get('name'),
+        email: loginEmail,
+        password,
+        phone: form.get('phone'),
+        groupIds,
+        accountStatus: form.get('accountStatus'),
+      });
+      const id = result.profile?.id || result.authUserId;
+
+      setData((d) => ({
+        ...d,
+        beneficiaries: [...d.beneficiaries, { id, authUserId: result.authUserId, name: form.get('name'), email: profileEmail || loginEmail, phone: form.get('phone'), groupIds, status: form.get('status') }],
+        groups: d.groups.map((group) => (groupIds.includes(group.id) ? { ...group, beneficiaryIds: [...new Set([...group.beneficiaryIds, id])] } : group)),
+      }));
+      setMockAccounts((accounts) => [...accounts, { id, loginEmail, password, accountStatus: form.get('accountStatus'), lastLogin: 'Jamais' }]);
+      setConfirmation({ title: result.message || 'Compte bénéficiaire créé avec succès', email: loginEmail, password });
+      setOpen(false);
+    } catch (creationError) {
+      setError(creationError.message === 'Email déjà utilisé.' ? 'Ce compte existe déjà.' : creationError.message);
+    } finally {
+      setSaving(false);
+    }
   }
   const copyCredentials = () => navigator.clipboard?.writeText(`Email de connexion: ${confirmation.email}\nMot de passe temporaire: ${confirmation.password}`);
   return (
     <div className="space-y-5">
       {confirmation && <ConfirmationCard confirmation={confirmation} onCopy={copyCredentials} />}
+      {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex max-w-md items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200"><Search size={18} className="text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un bénéficiaire" className="w-full outline-none" /></label>
         <button onClick={() => setOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white hover:bg-indigo-700"><Plus size={18} /> Ajouter un bénéficiaire</button>
       </div>
       <DataTable columns={columns} rows={rows} />
-      {open && <Modal title="Ajouter un bénéficiaire" onClose={() => setOpen(false)}><BeneficiaireForm onSubmit={add} groups={data.groups} /></Modal>}
+      {open && <Modal title="Ajouter un bénéficiaire" onClose={() => setOpen(false)}><BeneficiaireForm onSubmit={add} groups={data.groups} saving={saving} formError={error} /></Modal>}
     </div>
   );
 }
 
-function BeneficiaireForm({ onSubmit, groups }) {
+function BeneficiaireForm({ onSubmit, groups, saving, formError }) {
   const [password, setPassword] = useState(generatePassword());
   return <form onSubmit={onSubmit} className="grid gap-4">
     <input name="name" required placeholder="Nom complet" className="rounded-xl border border-slate-200 px-4 py-3" />
@@ -88,7 +110,8 @@ function BeneficiaireForm({ onSubmit, groups }) {
     <fieldset className="rounded-xl border border-slate-200 p-4"><legend className="px-1 text-sm font-bold">Groupes</legend>{groups.map((g) => <label key={g.id} className="mb-2 block text-sm"><input type="checkbox" name="groups" value={g.id} /> {g.name}</label>)}</fieldset>
     <select name="status" className="rounded-xl border border-slate-200 px-4 py-3"><option>actif</option><option>archivé</option></select>
     <AccountSection password={password} setPassword={setPassword} />
-    <button className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white">Enregistrer</button>
+    {formError && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{formError}</p>}
+    <button disabled={saving} className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{saving ? 'Création du compte...' : 'Enregistrer'}</button>
   </form>;
 }
 
