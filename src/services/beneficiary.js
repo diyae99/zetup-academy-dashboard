@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { normalizeResource } from './resources';
+import { loadQuizQuestions } from './quizzes';
 
 function byId(items) {
   return new Map((items || []).map((item) => [item.id, item]));
@@ -18,7 +19,7 @@ function normalizeLocalQuiz(quiz) {
     groupId: quiz.groupId || quiz.group_id,
     language: quiz.language || '',
     level: quiz.level || '',
-    status: quiz.status,
+    status: quiz.status === 'published' ? 'publié' : quiz.status,
     questions: quiz.questions || [],
   };
 }
@@ -67,14 +68,16 @@ export async function loadBeneficiaryWorkspace(user, localData = {}) {
   }));
 
   const resources = (resourcesResult.data || []).filter((resource) => activeGroupIds.has(resource.group_id)).map((resource) => normalizeResource(resource, groups));
-  const remoteQuizzes = (quizzesResult.data || []).filter((quiz) => activeGroupIds.has(quiz.group_id)).map((quiz) => ({
+  const visibleRemoteQuizRows = (quizzesResult.data || []).filter((quiz) => activeGroupIds.has(quiz.group_id) && quiz.status === 'published');
+  const questionsByQuiz = await loadQuizQuestions(visibleRemoteQuizRows.map((quiz) => quiz.id));
+  const remoteQuizzes = visibleRemoteQuizRows.map((quiz) => ({
     id: quiz.id,
     title: quiz.title,
     groupId: quiz.group_id,
     language: languageMap.get(quiz.language_id)?.name || '',
     level: levelMap.get(quiz.level_id)?.name || '',
-    status: quiz.status,
-    questions: [],
+    status: quiz.status === 'published' ? 'publié' : quiz.status,
+    questions: questionsByQuiz.get(quiz.id) || [],
   }));
   const localQuizzes = (localData.quizzes || []).map(normalizeLocalQuiz).filter((quiz) => activeGroupIds.has(quiz.groupId) && quiz.status === 'publié');
   const quizById = new Map([...remoteQuizzes, ...localQuizzes].map((quiz) => [quiz.id, quiz]));

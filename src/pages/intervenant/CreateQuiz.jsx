@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { useAppData } from '../../App';
 import { fetchAssignedGroupsForIntervenant } from '../../services/groupAssignments';
+import { createQuizWithQuestions } from '../../services/quizzes';
 
 const blankQuestion = () => ({ id: `q-${Date.now()}-${Math.random()}`, type: 'QCM', text: '', options: ['', '', '', ''], correctAnswer: '' });
 
@@ -87,7 +88,7 @@ export default function CreateQuiz({ user }) {
     };
   }, [user]);
 
-  function save(status) {
+  async function save(status) {
     setError('');
     setSuccess('');
 
@@ -98,26 +99,24 @@ export default function CreateQuiz({ user }) {
     }
 
     try {
-      if (status === 'publié') setPublishing(true);
+      setPublishing(true);
       const cleanQuestions = normalizeQuestions(quiz.questions);
-      const savedQuiz = {
-        id: `quiz-${Date.now()}`,
-        title: quiz.title.trim() || 'Quiz sans titre',
-        language: selectedGroup.language,
-        level: selectedGroup.level,
-        groupId: selectedGroup.id,
-        createdBy: user.authUserId || user.id,
-        createdAt: new Date().toISOString().slice(0, 10),
+      const savedQuiz = await createQuizWithQuestions({
+        user,
+        quiz: { ...quiz, questions: cleanQuestions },
+        selectedGroup,
         status,
-        questions: cleanQuestions,
-      };
+      });
 
-      setData((current) => ({ ...current, quizzes: [...current.quizzes, savedQuiz] }));
+      setData((current) => ({
+        ...current,
+        quizzes: [...current.quizzes.filter((item) => item.id !== savedQuiz.id), savedQuiz],
+      }));
       setSuccess(status === 'publié' ? 'Quiz publié avec succès.' : 'Brouillon enregistré avec succès.');
       window.setTimeout(() => navigate('/intervenant/quizzes'), 600);
     } catch (saveError) {
       if (import.meta.env.DEV) console.error('Erreur publication quiz', saveError);
-      setError('Impossible d’enregistrer le quiz. Vérifiez les champs puis réessayez.');
+      setError(saveError.message || 'Impossible d’enregistrer le quiz. Vérifiez les champs puis réessayez.');
       setPublishing(false);
     }
   }
