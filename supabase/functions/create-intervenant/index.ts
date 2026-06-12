@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
   const { data: profile, error: profileError } = await adminClient
     .from('profiles')
     .upsert(profilePayload, { onConflict: 'auth_user_id' })
-    .select('auth_user_id,full_name,email,role,account_status')
+    .select('id,auth_user_id,full_name,email,role,account_status')
     .single();
 
   if (profileError) {
