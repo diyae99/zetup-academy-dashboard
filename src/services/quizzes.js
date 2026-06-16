@@ -50,8 +50,26 @@ function normalizeQuestion(question, options = []) {
     text: question.question_text,
     options: orderedOptions.map((option) => option.option_text),
     optionIds: Object.fromEntries(orderedOptions.map((option) => [option.option_text, option.id])),
+    correctOptionId: correct?.id || null,
     correctAnswer: correct?.option_text || '',
     sortOrder: question.sort_order || 0,
+  };
+}
+
+function scoreSubmittedAnswers(quiz, answers) {
+  const total = quiz.questions?.length || 0;
+  const correct = (quiz.questions || []).reduce((count, question) => {
+    if (question.type === 'QCM') {
+      const selectedOptionId = question.optionIds?.[answers[question.id]] || null;
+      return selectedOptionId && selectedOptionId === question.correctOptionId ? count + 1 : count;
+    }
+    return answers[question.id] === question.correctAnswer ? count + 1 : count;
+  }, 0);
+
+  return {
+    correct,
+    total,
+    score: total ? Math.round((correct / total) * 100) : 0,
   };
 }
 
@@ -245,14 +263,27 @@ export async function createQuizWithQuestions({ user, quiz, selectedGroup, statu
 }
 
 export async function submitQuizAttempt({ user, quiz, answers, scored }) {
-  if (!user?.profileId) throw new Error('Profil bénéficiaire introuvable. Veuillez vous reconnecter.');
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) throw new Error('Session bénéficiaire introuvable. Veuillez vous reconnecter.');
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id,auth_user_id,role')
+    .eq('auth_user_id', authData.user.id)
+    .maybeSingle();
+
+  if (profileError) throw new Error(`Profil bénéficiaire: ${profileError.message}`);
+  if (!profile || profile.role !== 'beneficiaire') throw new Error('Profil bénéficiaire introuvable. Veuillez vous reconnecter.');
+
+  const beneficiaryId = profile.id;
   if (!quiz?.id || !quiz?.groupId) throw new Error('Quiz invalide.');
-  if (!isUuid(quiz.id) || !isUuid(quiz.groupId) || !isUuid(user.profileId)) {
+  if (!isUuid(quiz.id) || !isUuid(quiz.groupId) || !isUuid(beneficiaryId)) {
     if (import.meta.env.DEV) {
       console.error('Soumission quiz bloquée: identifiants non UUID', {
+        authUserId: authData.user.id,
         quizId: quiz.id,
         groupId: quiz.groupId,
-        beneficiaryId: user.profileId,
+        beneficiaryId,
       });
     }
     throw new Error("Impossible d'enregistrer le résultat. Veuillez réessayer.");
@@ -264,33 +295,80 @@ export async function submitQuizAttempt({ user, quiz, answers, scored }) {
     throw new Error("Impossible d'enregistrer le résultat. Veuillez réessayer.");
   }
 
+  const invalidSelectedOption = quiz.questions.find((question) => (
+    question.type === 'QCM' && !isUuid(question.optionIds?.[answers[question.id]])
+  ));
+  if (invalidSelectedOption) {
+    if (import.meta.env.DEV) {
+      console.error('Soumission quiz bloquée: option sélectionnée non UUID', {
+        question: invalidSelectedOption,
+        selectedAnswer: answers[invalidSelectedOption.id],
+      });
+    }
+    throw new Error("Impossible d'enregistrer le résultat. Veuillez réessayer.");
+  }
+
+  const finalScore = scoreSubmittedAnswers(quiz, answers);
+  const attemptPayload = {
+    quiz_id: quiz.id,
+    beneficiary_id: beneficiaryId,
+    group_id: quiz.groupId,
+    total_questions: finalScore.total,
+    correct_answers: finalScore.correct,
+    score_percent: finalScore.score,
+    status: 'completed',
+    completed_at: new Date().toISOString(),
+  };
+
+  if (import.meta.env.DEV) {
+    console.info('Soumission quiz - payload tentative', {
+      authUserId: authData.user.id,
+      profileId: beneficiaryId,
+      userPropProfileId: user?.profileId,
+      quizId: quiz.id,
+      groupId: quiz.groupId,
+      answers,
+      questions: quiz.questions.map((question) => ({
+        id: question.id,
+        type: question.type,
+        optionIds: question.optionIds || null,
+        correctOptionId: question.correctOptionId || null,
+        correctAnswer: question.correctAnswer,
+      })),
+      calculatedScoreFromPage: scored,
+      calculatedScoreForInsert: finalScore,
+      attemptPayload,
+    });
+  }
+
   const { data: attempt, error: attemptError } = await supabase
     .from('quiz_attempts')
-    .insert({
-      quiz_id: quiz.id,
-      beneficiary_id: user.profileId,
-      group_id: quiz.groupId,
-      total_questions: scored.total,
-      correct_answers: scored.correct,
-      score_percent: scored.score,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    })
+    .insert(attemptPayload)
     .select('id,quiz_id,beneficiary_id,group_id,score_percent,status,completed_at,started_at')
     .single();
-  if (attemptError) throw new Error(`Enregistrement du résultat: ${attemptError.message}`);
+  if (attemptError) {
+    if (import.meta.env.DEV) console.error('Erreur insertion quiz_attempts', { attemptPayload, attemptError });
+    throw new Error(`Enregistrement du résultat: ${attemptError.message}`);
+  }
 
   const answerRows = quiz.questions.map((question) => ({
     attempt_id: attempt.id,
     question_id: question.id,
     selected_option_id: question.type === 'QCM' ? question.optionIds?.[answers[question.id]] || null : null,
     boolean_answer: question.type === 'Vrai/Faux' ? answers[question.id] === 'Vrai' : null,
-    is_correct: answers[question.id] === question.correctAnswer,
+    is_correct: question.type === 'QCM'
+      ? question.optionIds?.[answers[question.id]] === question.correctOptionId
+      : answers[question.id] === question.correctAnswer,
   }));
+
+  if (import.meta.env.DEV) console.info('Soumission quiz - payload réponses', { attempt, answerRows });
 
   if (answerRows.length) {
     const { error: answersError } = await supabase.from('quiz_answers').insert(answerRows);
-    if (answersError) throw new Error(`Réponses quiz: ${answersError.message}`);
+    if (answersError) {
+      if (import.meta.env.DEV) console.error('Erreur insertion quiz_answers', { answerRows, answersError });
+      throw new Error(`Réponses quiz: ${answersError.message}`);
+    }
   }
 
   return {
@@ -299,8 +377,8 @@ export async function submitQuizAttempt({ user, quiz, answers, scored }) {
     groupId: attempt.group_id,
     quizId: attempt.quiz_id,
     score: Math.round(Number(attempt.score_percent) || 0),
-    correct: scored.correct,
-    total: scored.total,
+    correct: finalScore.correct,
+    total: finalScore.total,
     date: attempt.completed_at || attempt.started_at || '',
   };
 }
