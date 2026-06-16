@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Copy, Eye, KeyRound, Plus, RefreshCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { useAppData } from '../../App';
-import { createBeneficiaireAccount, deleteAccount, deleteAllAccounts, loadAdminAccounts, resetAccountPassword, setAccountStatus } from '../../services/adminUsers';
+import { createBeneficiaireAccount, deleteAccount, deleteAllAccounts, loadAdminAccounts, loadAdminGroupsForSelection, resetAccountPassword, setAccountStatus } from '../../services/adminUsers';
 import Badge from '../../components/Badge';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
@@ -16,6 +16,7 @@ export default function AdminBeneficiaires() {
   const { data, setData } = useAppData();
   const [mockAccounts, setMockAccounts] = useState([]);
   const [remoteRows, setRemoteRows] = useState([]);
+  const [groupOptions, setGroupOptions] = useState([]);
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -40,7 +41,12 @@ export default function AdminBeneficiaires() {
   async function refreshRows() {
     setLoading(true);
     try {
-      setRemoteRows(await loadAdminAccounts('beneficiaire'));
+      const [accounts, groups] = await Promise.all([
+        loadAdminAccounts('beneficiaire'),
+        loadAdminGroupsForSelection(),
+      ]);
+      setRemoteRows(accounts);
+      setGroupOptions(groups);
       setRemoteLoaded(true);
     } catch (loadError) {
       setError(loadError.message || 'Impossible de charger les bénéficiaires Supabase.');
@@ -127,7 +133,10 @@ export default function AdminBeneficiaires() {
   const columns = [
     { key: 'name', label: 'Nom' },
     { key: 'email', label: 'Email' },
-    { key: 'groups', label: 'Groupes', render: (r) => r.groupIds.map((id) => data.groups.find((g) => g.id === id)?.name).filter(Boolean).join(', ') },
+    { key: 'groups', label: 'Groupes', render: (r) => {
+      const names = r.groupNames?.length ? r.groupNames : (r.groupIds || []).map((id) => [...groupOptions, ...data.groups].find((g) => g.id === id)?.name).filter(Boolean);
+      return names.length ? names.join(', ') : <span className="text-slate-400">Aucun groupe</span>;
+    } },
     { key: 'lastScore', label: 'Dernier score', render: (r) => `${[...data.quizResults].reverse().find((x) => x.beneficiaryId === r.id)?.score ?? 0}%` },
     { key: 'status', label: 'Statut', render: (r) => <Badge>{r.status}</Badge> },
     { key: 'account', label: 'Compte', render: (r) => r.email || 'Non créé' },
@@ -155,17 +164,19 @@ export default function AdminBeneficiaires() {
         accountStatus: form.get('accountStatus'),
       });
       const id = result.profile?.id || result.authUserId;
+      const selectedGroupNames = groupIds.map((groupId) => [...groupOptions, ...data.groups].find((group) => group.id === groupId)?.name).filter(Boolean);
 
       setData((d) => ({
         ...d,
-        beneficiaries: [...d.beneficiaries, { id, authUserId: result.authUserId, name: form.get('name'), email: profileEmail || loginEmail, phone: form.get('phone'), groupIds, status: form.get('status') }],
-        groups: d.groups.map((group) => (groupIds.includes(group.id) ? { ...group, beneficiaryIds: [...new Set([...group.beneficiaryIds, id])] } : group)),
+        beneficiaries: [...d.beneficiaries, { id, authUserId: result.authUserId, name: form.get('name'), email: profileEmail || loginEmail, phone: form.get('phone'), groupIds, groupNames: selectedGroupNames, status: form.get('status') }],
+        groups: d.groups.map((group) => (groupIds.includes(group.id) ? { ...group, beneficiaryIds: [...new Set([...(group.beneficiaryIds || []), id])] } : group)),
       }));
       setMockAccounts((accounts) => [...accounts, { id, loginEmail, password, accountStatus: form.get('accountStatus'), lastLogin: 'Jamais' }]);
       setConfirmation({ title: result.message || 'Compte bénéficiaire créé avec succès', email: loginEmail, password });
       await refreshRows();
       setOpen(false);
     } catch (creationError) {
+      if (import.meta.env.DEV) console.error('Erreur création bénéficiaire', creationError);
       setError(creationError.message === 'Email déjà utilisé.' ? 'Ce compte existe déjà.' : creationError.message);
     } finally {
       setSaving(false);
@@ -184,7 +195,7 @@ export default function AdminBeneficiaires() {
       {loading && <div className="rounded-2xl bg-white p-4 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200/70">Chargement des comptes bénéficiaires...</div>}
       <DataTable columns={columns} rows={rows} />
       <DangerZone onDeleteAll={() => setDangerAction('beneficiaires')} busy={bulkBusy} />
-      {open && <Modal title="Ajouter un bénéficiaire" onClose={() => setOpen(false)}><BeneficiaireForm onSubmit={add} groups={data.groups} saving={saving} formError={error} /></Modal>}
+      {open && <Modal title="Ajouter un bénéficiaire" onClose={() => setOpen(false)}><BeneficiaireForm onSubmit={add} groups={groupOptions.length ? groupOptions : data.groups} saving={saving} formError={error} /></Modal>}
       {deleteTarget && <ConfirmDeleteModal title="Supprimer bénéficiaire" message="Voulez-vous vraiment supprimer ce bénéficiaire ? Cette action supprimera son compte, ses résultats, ses participations aux groupes et ses données associées." busy={busyId === deleteTarget.id} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />}
       {dangerAction && <DangerConfirmModal title="Supprimer tous les bénéficiaires" busy={bulkBusy} onCancel={() => setDangerAction(null)} onConfirm={confirmBulkDelete} />}
     </div>

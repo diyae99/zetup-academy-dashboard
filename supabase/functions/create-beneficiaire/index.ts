@@ -153,7 +153,8 @@ Deno.serve(async (req) => {
       .upsert(memberships, { onConflict: 'group_id,beneficiary_id' });
     if (membershipError) {
       return json({
-        error: `Compte bénéficiaire créé, mais association aux groupes impossible : ${membershipError.message}`,
+        error: "Compte créé, mais l'affectation au groupe a échoué.",
+        details: membershipError.message,
       }, 500);
     }
   }

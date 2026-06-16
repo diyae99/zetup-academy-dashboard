@@ -34,7 +34,7 @@ export async function loadAdminAccounts(role) {
   if (normalizedRole === 'beneficiaire') {
     const profileIds = (profiles || []).map((profile) => profile.id);
     const membershipsResult = profileIds.length
-      ? await supabase.from('group_members').select('group_id,beneficiary_id,status').in('beneficiary_id', profileIds)
+      ? await supabase.from('group_members').select('group_id,beneficiary_id,status,groups(id,name)').in('beneficiary_id', profileIds)
       : { data: [], error: null };
     if (membershipsResult.error) throw new Error(`Impossible de charger les groupes bénéficiaires: ${membershipsResult.error.message}`);
 
@@ -47,6 +47,7 @@ export async function loadAdminAccounts(role) {
       phone: profile.phone || '',
       role: profile.role,
       groupIds: (membershipsResult.data || []).filter((item) => item.beneficiary_id === profile.id && item.status !== 'removed').map((item) => item.group_id),
+      groupNames: (membershipsResult.data || []).filter((item) => item.beneficiary_id === profile.id && item.status !== 'removed').map((item) => item.groups?.name).filter(Boolean),
       status: profile.account_status === 'suspended' ? 'suspendu' : 'actif',
       accountStatus: normalizeAccountStatus(profile.account_status),
       lastLogin: 'Valeur Supabase',
@@ -66,6 +67,20 @@ export async function loadAdminAccounts(role) {
     status: profile.account_status === 'suspended' ? 'suspendu' : 'actif',
     accountStatus: normalizeAccountStatus(profile.account_status),
     lastLogin: 'Valeur Supabase',
+  }));
+}
+
+export async function loadAdminGroupsForSelection() {
+  const { data, error } = await supabase
+    .from('groups')
+    .select('id,name,status')
+    .order('name');
+
+  if (error) throw new Error(`Impossible de charger les groupes: ${error.message}`);
+  return (data || []).map((group) => ({
+    id: group.id,
+    name: group.name,
+    status: group.status,
   }));
 }
 
@@ -192,6 +207,7 @@ export async function createBeneficiaireAccount(payload) {
 
     if (error) {
       const details = await readFunctionError(error);
+      if (import.meta.env.DEV) console.error('create-beneficiaire returned an error', { details, error });
       throw new Error(details?.error || error.message || 'Impossible de créer le compte bénéficiaire.');
     }
 
