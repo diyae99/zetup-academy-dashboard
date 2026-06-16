@@ -32,9 +32,9 @@ export default function QuizPlayer({ user }) {
   }, [user, data, quizId]);
 
   const quiz = useMemo(() => {
-    const local = data.quizzes.find((item) => item.id === quizId);
     const visible = workspace.quizzes.find((item) => item.id === quizId);
-    return local || visible;
+    const local = data.quizzes.find((item) => item.id === quizId);
+    return visible || local;
   }, [data.quizzes, quizId, workspace.quizzes]);
   const group = workspace.groups.find((g) => g.id === quiz?.groupId);
   const allowed = !!quiz && workspace.quizzes.some((item) => item.id === quiz.id);
@@ -59,7 +59,7 @@ export default function QuizPlayer({ user }) {
       setData((current) => ({ ...current, quizResults: [...current.quizResults.filter((item) => !(item.quizId === quiz.id && (item.beneficiaryId === user.id || item.beneficiaryId === user.profileId))), saved] }));
     } catch (error) {
       if (import.meta.env.DEV) console.error('Erreur soumission quiz', error);
-      setSubmitError(error.message || 'Impossible d’enregistrer votre résultat.');
+      setSubmitError("Impossible d'enregistrer le résultat. Veuillez réessayer.");
     } finally {
       setSubmitting(false);
     }

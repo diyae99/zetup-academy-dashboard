@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { normalizeResource } from './resources';
-import { loadQuizQuestions } from './quizzes';
+import { isUuid, loadQuizQuestions } from './quizzes';
 
 function byId(items) {
   return new Map((items || []).map((item) => [item.id, item]));
@@ -79,7 +79,9 @@ export async function loadBeneficiaryWorkspace(user, localData = {}) {
     status: quiz.status === 'published' ? 'publié' : quiz.status,
     questions: questionsByQuiz.get(quiz.id) || [],
   }));
-  const localQuizzes = (localData.quizzes || []).map(normalizeLocalQuiz).filter((quiz) => activeGroupIds.has(quiz.groupId) && quiz.status === 'publié');
+  const localQuizzes = (localData.quizzes || [])
+    .map(normalizeLocalQuiz)
+    .filter((quiz) => isUuid(quiz.id) && activeGroupIds.has(quiz.groupId) && quiz.status === 'publié');
   const quizById = new Map([...remoteQuizzes, ...localQuizzes].map((quiz) => [quiz.id, quiz]));
   const quizzes = [...quizById.values()];
   const results = (attemptsResult.data || []).map((attempt) => ({

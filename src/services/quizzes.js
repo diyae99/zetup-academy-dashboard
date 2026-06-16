@@ -26,6 +26,10 @@ function dbStatus(status) {
   return DB_STATUS[status] || 'draft';
 }
 
+export function isUuid(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function normalizeQuestion(question, options = []) {
   if (question.question_type === 'true_false') {
     return {
@@ -81,7 +85,7 @@ export function normalizeQuiz(row, lookups = {}, questions = []) {
 }
 
 export async function loadQuizQuestions(quizIds) {
-  const ids = [...new Set((quizIds || []).filter(Boolean))];
+  const ids = [...new Set((quizIds || []).filter(isUuid))];
   if (!ids.length) return new Map();
 
   const questionsResult = await supabase
@@ -243,6 +247,22 @@ export async function createQuizWithQuestions({ user, quiz, selectedGroup, statu
 export async function submitQuizAttempt({ user, quiz, answers, scored }) {
   if (!user?.profileId) throw new Error('Profil bénéficiaire introuvable. Veuillez vous reconnecter.');
   if (!quiz?.id || !quiz?.groupId) throw new Error('Quiz invalide.');
+  if (!isUuid(quiz.id) || !isUuid(quiz.groupId) || !isUuid(user.profileId)) {
+    if (import.meta.env.DEV) {
+      console.error('Soumission quiz bloquée: identifiants non UUID', {
+        quizId: quiz.id,
+        groupId: quiz.groupId,
+        beneficiaryId: user.profileId,
+      });
+    }
+    throw new Error("Impossible d'enregistrer le résultat. Veuillez réessayer.");
+  }
+
+  const invalidQuestion = quiz.questions.find((question) => !isUuid(question.id));
+  if (invalidQuestion) {
+    if (import.meta.env.DEV) console.error('Soumission quiz bloquée: question non UUID', invalidQuestion);
+    throw new Error("Impossible d'enregistrer le résultat. Veuillez réessayer.");
+  }
 
   const { data: attempt, error: attemptError } = await supabase
     .from('quiz_attempts')
